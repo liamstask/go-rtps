@@ -1,6 +1,7 @@
 package rtps
 
 import (
+	"bytes"
 	"fmt"
 )
 
@@ -54,6 +55,15 @@ func (s *session) pubWithWriterID(id EntityID) *Pub {
 	for _, pub := range s.pubs {
 		if id == pub.writerEID {
 			return pub
+		}
+	}
+	return nil
+}
+
+func (s *session) findParticipant(gp GUIDPrefix) *Participant {
+	for _, p := range s.discoParticipants {
+		if bytes.Equal(gp, p.guidPrefix) {
+			return p
 		}
 	}
 	return nil
