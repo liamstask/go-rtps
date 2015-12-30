@@ -138,15 +138,6 @@ func (s *SPDP) start() {
 	}()
 }
 
-func newHeader() *Header {
-	return &Header{
-		magic:      Magic,
-		protoVer:   ProtoVersion{MY_RTPS_VERSION_MAJOR, MY_RTPS_VERSION_MINOR},
-		vid:        MY_RTPS_VENDOR_ID,
-		guidPrefix: defaultUDPConfig.guidPrefix,
-	}
-}
-
 func (s *SPDP) bcast() {
 
 	var msgbuf bytes.Buffer
