@@ -79,7 +79,7 @@ func udpInit() error {
 		return err
 	}
 
-	println("found interface:", iface.Name, "ip:", ip.String())
+	println("found interface:", iface.Name, "MTU:", iface.MTU, "ip:", ip.String())
 	defaultUDPConfig.iface = iface
 	defaultUDPConfig.unicastAddr = ip
 
@@ -220,10 +220,10 @@ func udpAddMcastRX(addr string) error {
 
 func (u *udpCtx) rx() {
 	for {
-		// XXX: defaultUDPConfig.iface.MTU on my machine says 1500 but if we ask for more,
-		// we can receive more in a single packet, and OpenSplice packets are often
-		// larger than 1500
-		buf := make([]byte, 2048)
+		// would prefer to limit packet size to MTU to avoid losing packets
+		// that lose a single fragment, but at least OpenSplice sends packets
+		// larger than standard MTU, so use a large buffer for now
+		buf := make([]byte, 4096)
 		n, _, err := u.conn.ReadFromUDP(buf)
 		if err != nil {
 			println("ReadFromUDP failed:", err)
