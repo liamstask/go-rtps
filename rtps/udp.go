@@ -220,14 +220,15 @@ func udpAddMcastRX(addr string) error {
 
 func (u *udpCtx) rx() {
 	for {
-		buf := make([]byte, defaultUDPConfig.iface.MTU)
+		// XXX: defaultUDPConfig.iface.MTU on my machine says 1500 but if we ask for more,
+		// we can receive more in a single packet, and OpenSplice packets are often
+		// larger than 1500
+		buf := make([]byte, 2048)
 		n, _, err := u.conn.ReadFromUDP(buf)
 		if err != nil {
 			println("ReadFromUDP failed:", err)
 			continue
 		}
-
-		// fmt.Println(n, "bytes from", src.String())
 		rxdispatch(buf[:n])
 	}
 }
