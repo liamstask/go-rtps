@@ -262,7 +262,8 @@ func (s *submsgData) WriteTo(w io.Writer) {
 	binary.LittleEndian.PutUint16(b[2:], s.octetsToInlineQos)
 	binary.LittleEndian.PutUint32(b[4:], uint32(s.readerID))
 	binary.LittleEndian.PutUint32(b[8:], uint32(s.writerID))
-	binary.LittleEndian.PutUint64(b[12:], uint64(s.writerSeqNum))
+	binary.LittleEndian.PutUint32(b[12:], uint32(s.writerSeqNum>>32))
+	binary.LittleEndian.PutUint32(b[16:], uint32(s.writerSeqNum&0xffffffff))
 	w.Write(b)
 	w.Write(s.data)
 }
@@ -318,8 +319,10 @@ func (s *submsgHeartbeat) WriteTo(w io.Writer) {
 	b := make([]byte, 28)
 	binary.LittleEndian.PutUint32(b[0:], uint32(s.readerEID))
 	binary.LittleEndian.PutUint32(b[4:], uint32(s.writerEID))
-	binary.LittleEndian.PutUint64(b[8:], uint64(s.firstSeqNum))
-	binary.LittleEndian.PutUint64(b[16:], uint64(s.lastSeqNum))
+	binary.LittleEndian.PutUint32(b[8:], uint32(s.firstSeqNum>>32))
+	binary.LittleEndian.PutUint32(b[12:], uint32(s.firstSeqNum&0xffffffff))
+	binary.LittleEndian.PutUint32(b[16:], uint32(s.lastSeqNum>>32))
+	binary.LittleEndian.PutUint32(b[20:], uint32(s.lastSeqNum&0xffffffff))
 	binary.LittleEndian.PutUint32(b[24:], s.count)
 	w.Write(b)
 }
@@ -348,7 +351,8 @@ func (s *submsgAckNack) WriteTo(w io.Writer) {
 	binary.LittleEndian.PutUint32(b[0:], uint32(s.readerEID))
 	binary.LittleEndian.PutUint32(b[4:], uint32(s.writerEID))
 
-	binary.LittleEndian.PutUint64(b[8:], uint64(s.readerSNState.bitmapBase))
+	binary.LittleEndian.PutUint32(b[8:], uint32(s.readerSNState.bitmapBase>>32))
+	binary.LittleEndian.PutUint32(b[12:], uint32(s.readerSNState.bitmapBase&0xffffffff))
 	binary.LittleEndian.PutUint32(b[16:], uint32(s.readerSNState.numBits))
 	for i, n := range s.readerSNState.bitmap {
 		binary.LittleEndian.PutUint32(b[20+i*4:], n)
