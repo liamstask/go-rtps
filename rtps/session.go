@@ -45,6 +45,15 @@ func (s *session) addReader(r *Reader) {
 	s.readers = append(s.readers, r)
 }
 
+func (s *session) readerWithWriterGUID(g *GUID) *Reader {
+	for _, rdr := range defaultSession.readers {
+		if rdr.writerGUID.Equal(g) {
+			return rdr
+		}
+	}
+	return nil
+}
+
 func (s *session) addWriter(w *Writer) {
 	// XXX: locking
 	// for _, wrtr := range s.writers {
@@ -53,6 +62,15 @@ func (s *session) addWriter(w *Writer) {
 	//     }
 	// }
 	s.writers = append(s.writers, w)
+}
+
+func (s *session) writerWithReaderGUID(g *GUID) *Writer {
+	for _, wrtr := range defaultSession.writers {
+		if wrtr.readerGUID.Equal(g) {
+			return wrtr
+		}
+	}
+	return nil
 }
 
 func (s *session) addSub(sub *Sub) {
