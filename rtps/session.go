@@ -45,6 +45,16 @@ func (s *session) addReader(r *Reader) {
 	s.readers = append(s.readers, r)
 }
 
+func (s *session) addWriter(w *Writer) {
+	// XXX: locking
+	// for _, wrtr := range s.writers {
+	//     if wrtr.writerGUID.Equal(&w.writerGUID) {
+	//         return
+	//     }
+	// }
+	s.writers = append(s.writers, w)
+}
+
 func (s *session) addSub(sub *Sub) {
 	// XXX: locking
 	fmt.Printf("sub %d: 0x%x\n", len(s.subs), sub.readerEID) // eid printed with wrong endianness
