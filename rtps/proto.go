@@ -18,7 +18,7 @@ const (
 	FRUDP_FLAGS_INLINE_QOS    = 0x02
 	FRUDP_FLAGS_DATA_PRESENT  = 0x04
 
-	FLAGS_SM_ENDIAN = 0x01
+	FLAGS_SM_ENDIAN = 0x01 // applies to all submessages
 
 	FLAGS_INFOTS_INVALIDATE = 0x2
 
@@ -98,6 +98,10 @@ const (
 	FRUDP_BUILTIN_EP_PARTICIPANT_MESSAGE_DATA_READER = 0x00000800
 )
 
+const (
+	MaxSeqNum = 0x7fffffffffffffff
+)
+
 type SeqNum int64
 
 func newSeqNum(hi uint32, lo uint32) SeqNum {
@@ -156,9 +160,9 @@ type Msg struct {
 }
 
 type SeqNumSet struct {
-	bitmapBase SeqNum
-	numBits    uint32
-	bitmap     []uint32
+	bitmapBase SeqNum   // first sequence number in the set
+	numBits    uint32   // total bit count
+	bitmap     []uint32 // as many uint32s required by numBits
 }
 
 type SeqNumSet32bits struct {
@@ -298,7 +302,7 @@ func (s *submsgHeartbeat) WriteTo(w io.Writer) {
 }
 
 type submsgGap struct {
-	header   submsgHeader
+	hdr      submsgHeader
 	readerID EntityID
 	writerID EntityID
 	gapStart SeqNum
@@ -306,6 +310,7 @@ type submsgGap struct {
 }
 
 type submsgAckNack struct {
+	hdr           submsgHeader
 	readerEID     EntityID
 	writerEID     EntityID
 	readerSNState SeqNumSet
