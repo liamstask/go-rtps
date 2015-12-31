@@ -56,15 +56,17 @@ func rxdispatch(b []byte) {
 	submsgbuf := b[8+len(hdr.guidPrefix):]
 
 	for len(submsgbuf) >= 4 {
-
 		submsg, err := newSubMsgFromBytes(submsgbuf)
 		if err != nil {
+			println("newSubMsgFromBytes:", err.Error())
 			break
 		}
-
 		rxer.handleSubMsg(submsg)
-
 		submsgbuf = submsgbuf[4+submsg.hdr.sz:]
+	}
+
+	if len(submsgbuf) > 0 {
+		println("oops, done processing with", len(submsgbuf), "bytes remaining")
 	}
 }
 
