@@ -14,7 +14,7 @@ import (
 // all implementations must support at least the Simple Participant Discovery Protocol."
 
 type SPDP struct {
-	part Participant //
+	part *Participant // currently unused - is this needed?
 }
 
 func (s *SPDP) init() {
@@ -39,6 +39,8 @@ func (s *SPDP) rxData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 		return // XXX: report
 	}
 
+	part := &Participant{}
+
 	for _, p := range plist {
 
 		if p.pid&0x8000 != 0 {
@@ -48,21 +50,21 @@ func (s *SPDP) rxData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 
 		switch p.pid {
 		case PID_PROTOCOL_VERSION:
-			s.part.protoVer = ProtoVersion{p.value[0], p.value[1]}
+			part.protoVer = ProtoVersion{p.value[0], p.value[1]}
 
 		case PID_VENDOR_ID:
-			s.part.vid = VendorID(binary.BigEndian.Uint16(p.value[0:]))
+			part.vid = VendorID(binary.BigEndian.Uint16(p.value[0:]))
 
 		case PID_DEFAULT_UNICAST_LOCATOR:
-			if s.part.defaultUcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
-				if s.part.defaultUcastLoc.kind == LOCATOR_KIND_UDPV4 {
+			if part.defaultUcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
+				if part.defaultUcastLoc.kind == LOCATOR_KIND_UDPV4 {
 					// ...
 				}
 			}
 
 		case PID_DEFAULT_MULTICAST_LOCATOR:
-			if s.part.defaultMcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
-				if s.part.defaultMcastLoc.kind == LOCATOR_KIND_UDPV4 {
+			if part.defaultMcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
+				if part.defaultMcastLoc.kind == LOCATOR_KIND_UDPV4 {
 					// ...
 				} else {
 					println("        spdp unknown mcast locator kind: ", s.part.defaultMcastLoc.kind)
@@ -70,37 +72,38 @@ func (s *SPDP) rxData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 			}
 
 		case PID_METATRAFFIC_UNICAST_LOCATOR:
-			if s.part.metaUcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
-				if s.part.metaUcastLoc.kind == LOCATOR_KIND_UDPV4 {
+			if part.metaUcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
+				if part.metaUcastLoc.kind == LOCATOR_KIND_UDPV4 {
 					// ...
-				} else if s.part.metaUcastLoc.kind == LOCATOR_KIND_UDPV6 {
+				} else if part.metaUcastLoc.kind == LOCATOR_KIND_UDPV6 {
 					// ignore ip6 for now...
 				} else {
-					println("        spdp unknown metatraffic mcast locator kind:", s.part.metaUcastLoc.kind)
+					println("        spdp unknown metatraffic mcast locator kind:", part.metaUcastLoc.kind)
 				}
 			}
 
 		case PID_METATRAFFIC_MULTICAST_LOCATOR:
-			if s.part.metaMcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
-				if s.part.metaMcastLoc.kind == LOCATOR_KIND_UDPV4 {
+			if part.metaMcastLoc, err = newUDPv4LocFromBytes(submsg.bin, p.value); err == nil {
+				if part.metaMcastLoc.kind == LOCATOR_KIND_UDPV4 {
 					// ...
-				} else if s.part.metaMcastLoc.kind == LOCATOR_KIND_UDPV6 {
+				} else if part.metaMcastLoc.kind == LOCATOR_KIND_UDPV6 {
 					// ignore ip6 for now...
 				} else {
-					println("        spdp unknown metatraffic mcast locator kind:", s.part.metaMcastLoc.kind)
+					println("        spdp unknown metatraffic mcast locator kind:", part.metaMcastLoc.kind)
 				}
 			}
 
 		case PID_PARTICIPANT_LEASE_DURATION:
 			if dur, err := durationFromBytes(submsg.bin, p.value); err == nil {
-				s.part.leaseDuration = dur
+				part.leaseDuration = dur
 			}
 
 		case PID_PARTICIPANT_GUID:
-			s.part.guidPrefix = p.value
+			part.guidPrefix = p.value[:UDPGuidPrefixLen]
+			// XXX: do something with the eid?
 
 		case PID_BUILTIN_ENDPOINT_SET:
-			s.part.builtinEndpoints = builtinEndpointSet(binary.LittleEndian.Uint32(p.value[0:]))
+			part.builtinEndpoints = builtinEndpointSet(binary.LittleEndian.Uint32(p.value[0:]))
 
 		case PID_PROPERTY_LIST:
 			// todo
@@ -114,18 +117,18 @@ func (s *SPDP) rxData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 	// participant list and see if we already have this one
 	found := false
 	for i, p := range defaultSession.discoParticipants {
-		if bytes.Equal(p.guidPrefix, s.part.guidPrefix) {
+		if bytes.Equal(p.guidPrefix, part.guidPrefix) {
 			found = true
-			println("found match at participant slot", i)
+			println("found match at participant slot", i, p.guidPrefix.String())
 			// TODO: see if anything has changed. update if needed
 			break
 		}
 	}
 
 	if !found {
-		println("new participant in slot:", len(defaultSession.discoParticipants))
-		defaultSession.discoParticipants = append(defaultSession.discoParticipants, &s.part)
-		defaultSession.sedp.addBuiltinEndpoints(&s.part)
+		fmt.Printf("new participant in slot %d: %s\n", len(defaultSession.discoParticipants), part.guidPrefix.String())
+		defaultSession.discoParticipants = append(defaultSession.discoParticipants, part)
+		defaultSession.sedp.addBuiltinEndpoints(part)
 	}
 }
 
