@@ -54,6 +54,15 @@ func (s *session) readerWithWriterGUID(g *GUID) *Reader {
 	return nil
 }
 
+func (s *session) readerWithWriterGUIDAndRdrID(g *GUID, rdrID EntityID) (*Reader, bool) {
+	for _, rdr := range defaultSession.readers {
+		if rdr.writerGUID.Equal(g) && (rdrID == rdr.readerEID || rdrID == EIDUnknown) {
+			return rdr, true
+		}
+	}
+	return nil, false
+}
+
 func (s *session) addWriter(w *Writer) {
 	// XXX: locking
 	// for _, wrtr := range s.writers {
@@ -77,6 +86,15 @@ func (s *session) addSub(sub *Sub) {
 	// XXX: locking
 	fmt.Printf("sub %d: 0x%x\n", len(s.subs), sub.readerEID) // eid printed with wrong endianness
 	s.subs = append(s.subs, sub)
+}
+
+func (s *session) subWithRdrID(rdrID EntityID) (*Sub, bool) {
+	for _, sub := range defaultSession.subs {
+		if sub.readerEID == rdrID {
+			return sub, true
+		}
+	}
+	return nil, false
 }
 
 func (s *session) pubWithWriterID(id EntityID) *Pub {
