@@ -221,13 +221,13 @@ func udpAddMcastRX(addr string) error {
 func (u *udpCtx) rx() {
 	for {
 		buf := make([]byte, defaultUDPConfig.iface.MTU)
-		n, src, err := u.conn.ReadFromUDP(buf)
+		n, _, err := u.conn.ReadFromUDP(buf)
 		if err != nil {
 			println("ReadFromUDP failed:", err)
 			continue
 		}
 
-		fmt.Println(n, "bytes from", src.String())
+		// fmt.Println(n, "bytes from", src.String())
 		rxdispatch(buf[:n])
 	}
 }
@@ -315,4 +315,50 @@ func udpPublish(pub *Pub, submsg *submsgData) {
 		}
 	}
 	pub.nextSubmsgIdx += 1 // else
+}
+
+var (
+	// better place for this to live
+	s_acknack_count = uint32(1)
+)
+
+func udpTxAckNack(prefix GUIDPrefix, readerID EntityID, writerGUID GUID, set SeqNumSet) {
+	// find the participant we are trying to talk to
+	part := defaultSession.findParticipant(prefix)
+	if part == nil {
+		println("tried to acknack an unknown participant:", prefix.String())
+		return // better error handling
+	}
+
+	var msgbuf bytes.Buffer
+	hdr := newHeader()
+	hdr.WriteTo(&msgbuf)
+
+	dstSubmsg := subMsg{
+		hdr: submsgHeader{
+			id:    SUBMSG_ID_INFO_DST,
+			flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
+			sz:    12,
+		},
+		data: prefix,
+	}
+	dstSubmsg.WriteTo(&msgbuf)
+
+	an := submsgAckNack{
+		hdr: submsgHeader{
+			id:    SUBMSG_ID_ACKNACK,
+			flags: FLAGS_SM_ENDIAN,
+			sz:    uint16(24 + set.BitMapWords()*4),
+		},
+		readerEID:     readerID,
+		writerEID:     writerGUID.eid,
+		readerSNState: set,
+		count:         s_acknack_count,
+	}
+	an.WriteTo(&msgbuf)
+	s_acknack_count++
+
+	if err := udpTXStr(msgbuf.Bytes(), part.metaUcastLoc.addrStr()); err != nil {
+		println("udpTxAckNack failed to tx:", err.Error())
+	}
 }
