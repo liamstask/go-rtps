@@ -83,17 +83,18 @@ func (s *SEDP) bcast() {
 	// todo
 }
 
+// called with publication info, as the dataCB for SEDPPubReaderID subscription
 func (s *SEDP) rxPubData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
-	s.rxPubsubData(r, submsg, scheme, b, true)
+	s.rxPubSubData(r, submsg, scheme, b, true)
 }
 
+// called with subscription info, as the dataCB for SEDPSubReaderID subscription
 func (s *SEDP) rxSubData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
-	s.rxPubsubData(r, submsg, scheme, b, false)
+	s.rxPubSubData(r, submsg, scheme, b, false)
 }
 
 func (s *SEDP) addBuiltinEndpoints(part *Participant) {
-
-	// this reads the remote peer's publications
+	// reads the remote peer's publications
 	defaultSession.addReader(&Reader{
 		writerGUID:  GUID{eid: SEDPPubWriterID, prefix: part.guidPrefix},
 		readerEID:   SEDPPubReaderID,
@@ -102,7 +103,7 @@ func (s *SEDP) addBuiltinEndpoints(part *Participant) {
 		reliable:    true,
 	})
 
-	// this reads the remote peer's subscriptions
+	// reads the remote peer's subscriptions
 	defaultSession.addReader(&Reader{
 		writerGUID:  GUID{eid: SEDPSubWriterID, prefix: part.guidPrefix},
 		readerEID:   SEDPSubReaderID,
@@ -125,6 +126,8 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 
 	if s.pubPub.nextSubmsgIdx != 0 {
 		var msgbuf bytes.Buffer
+		hdr := newHeader()
+		hdr.WriteTo(&msgbuf)
 
 		tsSubmsg := newTsSubMsg(time.Now(), binary.LittleEndian)
 		tsSubmsg.WriteTo(&msgbuf)
@@ -159,13 +162,62 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 	}
 }
 
-func (s *SEDP) rxPubsubData(r *receiver, submsg *subMsg, scheme uint16, b []byte, isPub bool) {
+func (s *SEDP) rxPubInfo(info *sedpTopicInfo) {
+	fmt.Printf("sedp pub: [%s / %s] num_subs = %d\r\n",
+		info.topicName, info.typeName, len(defaultSession.subs))
+	// look to see if we are subscribed to this topic
+	for _, sub := range defaultSession.subs {
+		if sub.topicName == "" || sub.typeName == "" {
+			continue // sanity check. some built-ins don't have names.
+		}
+		if sub.topicName == info.topicName && sub.typeName == info.typeName {
+			fmt.Printf("    hooray! found a topic we care about: [%s]\n", sub.topicName)
+			// see if we already have a matched reader for this writer
+			if rdr := defaultSession.readerWithWriterGUID(&info.guid); rdr == nil {
+				defaultSession.addReader(&Reader{
+					writerGUID:  info.guid,
+					readerEID:   sub.readerEID,
+					maxRxSeqNum: 0,
+					dataCB:      sub.dataCB,
+					msgCB:       sub.msgCB,
+					reliable:    sub.reliable,
+				})
+			}
+		}
+	}
+}
+
+func (s *SEDP) rxSubInfo(info *sedpTopicInfo) {
+	fmt.Printf("sedp sub: [%s]\r\n", info.topicName)
+	// look to see if we publish this topic
+	for _, pub := range defaultSession.pubs {
+		if pub.topicName == "" || pub.typeName == "" {
+			continue // sanity check. some built-ins don't have names.
+		}
+		if pub.topicName != info.topicName {
+			continue // not the same topic
+		}
+		if pub.typeName != info.typeName {
+			fmt.Printf("    SEDP type mismatch: [%s] != [%s]\r\n", pub.typeName, info.typeName)
+			continue
+		}
+		fmt.Printf("    hooray! heard a request for a topic we publish: [%s]\r\n", pub.topicName)
+		// see if we already have a writer for this subscriber
+		if w := defaultSession.writerWithReaderGUID(&info.guid); w == nil {
+			defaultSession.addWriter(&Writer{
+				readerGUID: info.guid,
+				writerEID:  pub.writerEID,
+			})
+		}
+	}
+}
+
+// called with pub/sub information about somebody else's subscriptions/publications
+func (s *SEDP) rxPubSubData(r *receiver, submsg *subMsg, scheme uint16, b []byte, isPub bool) {
 	if scheme != SCHEME_PL_CDR_LE {
-		// FREERTPS_ERROR("expected sedp data to be PL_CDR_LE. bailing...\r\n");
+		// report err
 		return
 	}
-
-	// memset(&s.topicInfo, 0, sizeof(sedp_topic_info_t));
 
 	plist, _, err := newParamList(submsg.bin, b)
 	if err != nil {
@@ -177,45 +229,37 @@ func (s *SEDP) rxPubsubData(r *receiver, submsg *subMsg, scheme uint16, b []byte
 
 		switch p.pid {
 		case PID_ENDPOINT_GUID:
-			// copy(s.topicInfo.guid[:], p.value)
-			//if (guid.entity_id.u == 0x03010000)
-			//  printf("found entity 0x103\n");
+			s.topicInfo.guid = guidFromBytes(p.value)
 
 		case PID_TOPIC_NAME:
 			if str, err := p.valToString(submsg.bin); err == nil {
 				s.topicInfo.topicName = str
-				println("    topic name:", str)
-			} else {
-				println("    couldn't parse topic name")
 			}
 
 		case PID_TYPE_NAME:
 			if str, err := p.valToString(submsg.bin); err == nil {
 				s.topicInfo.typeName = str
-				println("    type name:", str)
-			} else {
-				println("    couldn't parse topic type")
 			}
 
 		case PID_RELIABILITY:
 			if qos, err := newQosReliabilityFromBytes(submsg.bin, p.value); err == nil {
 				if qos.kind == QOS_RELIABILITY_KIND_BEST_EFFORT {
-					println("    reliability QoS: [best-effort]")
+					// println("    reliability QoS: [best-effort]")
 				} else if qos.kind == QOS_RELIABILITY_KIND_RELIABLE {
-					println("    reliability QoS: [reliable]")
+					// println("    reliability QoS: [reliable]")
 				} else {
-					println("unhandled reliability kind:", qos.kind)
+					// println("unhandled reliability kind:", qos.kind)
 				}
 			}
 
 		case PID_HISTORY:
 			if qos, err := newQosHistoryFromBytes(submsg.bin, p.value); err == nil {
 				if qos.kind == QOS_HISTORY_KIND_KEEP_LAST {
-					println("    history QoS: keep last", qos.depth)
+					// println("    history QoS: keep last", qos.depth)
 				} else if qos.kind == QOS_HISTORY_KIND_KEEP_ALL {
-					println("    history QoS: [keep all]")
+					// println("    history QoS: [keep all]")
 				} else {
-					println("unhandled history kind:", qos.kind)
+					// println("unhandled history kind:", qos.kind)
 				}
 			}
 
@@ -227,19 +271,19 @@ func (s *SEDP) rxPubsubData(r *receiver, submsg *subMsg, scheme uint16, b []byte
 		}
 	}
 
-	// // make sure we have received all necessary parameters
-	// if s.topicInfo.typeName == "" ||
-	// 	s.topicInfo.topicName == "" ||
-	// 	frudp_guid_identical(&s.topicInfo.guid, &g_frudp_guid_unknown) {
-	// 	println("insufficient SEDP information")
-	// 	return
-	// }
-	//
-	// if isPub { // this is information about someone else's publication
-	// 	frudp_sedp_rx_pub_info(s.topicInfo)
-	// } else { // this is information about someone else's subscription
-	// 	frudp_sedp_rx_sub_info(s.topicInfo)
-	// }
+	// make sure we have received all necessary parameters
+	if s.topicInfo.typeName == "" ||
+		s.topicInfo.topicName == "" ||
+		s.topicInfo.guid.Unknown() {
+		println("insufficient SEDP information")
+		return
+	}
+
+	if isPub { // info about someone else's publication
+		s.rxPubInfo(&s.topicInfo)
+	} else { // info about someone else's subscription
+		s.rxSubInfo(&s.topicInfo)
+	}
 }
 
 func (s *SEDP) publishSub(sub *Sub) {
