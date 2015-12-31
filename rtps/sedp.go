@@ -141,7 +141,7 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 		hb := submsgHeartbeat{
 			hdr: submsgHeader{
 				id:    SUBMSG_ID_HEARTBEAT,
-				flags: 0x3, // todo: spell this out
+				flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
 				sz:    28,
 			},
 			readerEID:   s.pubPub.dataSubmsgs[0].readerID,

@@ -295,7 +295,7 @@ func udpPublish(pub *Pub, submsg *submsgData) {
 	hb := submsgHeartbeat{
 		hdr: submsgHeader{
 			id:    SUBMSG_ID_HEARTBEAT,
-			flags: 0x3, // todo: spell this out
+			flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
 			sz:    28,
 		},
 		readerEID:   submsg.readerID,
@@ -339,7 +339,7 @@ func udpTxAckNack(prefix GUIDPrefix, readerID EntityID, writerGUID GUID, set Seq
 		hdr: submsgHeader{
 			id:    SUBMSG_ID_INFO_DST,
 			flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
-			sz:    12,
+			sz:    UDPGuidPrefixLen,
 		},
 		data: prefix,
 	}

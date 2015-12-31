@@ -244,7 +244,6 @@ func (r *receiver) rxAckNack(sm *subMsg) {
 			bitmapBase: newSeqNum(sm.bin.Uint32(sm.data[8:]), sm.bin.Uint32(sm.data[12:])),
 			numBits:    sm.bin.Uint32(sm.data[16:]),
 		},
-		// the "count" field that goes here is impossible to declare in legal C
 	}
 
 	fmt.Printf("ACKNACK: %d . %d\n", an.readerSNState.bitmapBase, an.readerSNState.numBits)
@@ -305,24 +304,20 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 
 	if match != nil {
 		if match.reliable && !final {
-			println("acknack requested in heartbeat")
 			// we have to send an ACKNACK now
 			var set SeqNumSet
-			// todo: handle 64-bit sequence numbers
-			// set.bitmapBase.high = 0
-			if match.maxRxSeqNum >= hb.lastSeqNum { // we're up-to-date
-				println("hb up to date")
+			if match.maxRxSeqNum >= hb.lastSeqNum {
+				println("hb: acknack requested, up to date")
 				set.bitmapBase = hb.firstSeqNum + 1
 				set.numBits = 0
-				set.bitmap = []uint32{}
 			} else {
-				println("hb acknack'ing multiple samples")
+				println("hb: acknack requested, acknack'ing multiple samples")
 				set.bitmapBase = match.maxRxSeqNum + 1
 				set.numBits = uint32(hb.lastSeqNum - match.maxRxSeqNum - 1)
 				if set.numBits > 31 {
 					set.numBits = 31
 				}
-				set.bitmap = []uint32{0xffffffff}
+				set.bitmap = []uint32{0xffffffff} // all bits acked for now
 			}
 			udpTxAckNack(r.srcGUIDPrefix, match.readerEID, match.writerGUID, set)
 		} else {

@@ -85,7 +85,7 @@ func (pub *Pub) rxAckNack(an *submsgAckNack, gp GUIDPrefix) {
 	//
 	//       frudp_submsg_heartbeat_t *hb_submsg = (frudp_submsg_heartbeat_t *)&msg->submsgs[submsg_wpos];
 	//       hb_submsg->header.id = FRUDP_SUBMSG_ID_HEARTBEAT;
-	//       hb_submsg->header.flags = 0x3; // todo: spell this out
+	//       hb_submsg->header.flags = FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
 	//       hb_submsg->header.len = 28;
 	//       hb_submsg->reader_id = data->reader_id;
 	//       hb_submsg->writer_id = data->writer_id;
