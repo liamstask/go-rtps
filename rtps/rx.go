@@ -262,12 +262,10 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 	final := sm.hdr.flags&FLAGS_HEARTBEAT_FLAG_FINAL != 0
 	// lively := sm.hdr.flags&FLAGS_HEARTBEAT_FLAG_LIVELINESS != 0
 
-	hb := submsgHeartbeat{
-		readerEID:   EntityID(sm.bin.Uint32(sm.data[0:])),
-		writerEID:   EntityID(sm.bin.Uint32(sm.data[4:])),
-		firstSeqNum: newSeqNum(sm.bin.Uint32(sm.data[8:]), sm.bin.Uint32(sm.data[12:])),
-		lastSeqNum:  newSeqNum(sm.bin.Uint32(sm.data[16:]), sm.bin.Uint32(sm.data[20:])),
-		count:       sm.bin.Uint32(sm.data[24:]),
+	hb, err := newHeartbeatFromBytes(sm.data)
+	if err != nil {
+		println("newHeartbeatFromBytes:", err.Error())
+		return
 	}
 	writerGUID := GUID{eid: hb.writerEID, prefix: r.srcGUIDPrefix}
 

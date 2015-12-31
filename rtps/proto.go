@@ -297,6 +297,21 @@ type submsgHeartbeat struct {
 	count       uint32
 }
 
+func newHeartbeatFromBytes(b []byte) (*submsgHeartbeat, error) {
+	if len(b) < 28 {
+		return nil, io.EOF
+	}
+
+	order := binary.LittleEndian
+	return &submsgHeartbeat{
+		readerEID:   EntityID(order.Uint32(b[0:])),
+		writerEID:   EntityID(order.Uint32(b[4:])),
+		firstSeqNum: newSeqNum(order.Uint32(b[8:]), order.Uint32(b[12:])),
+		lastSeqNum:  newSeqNum(order.Uint32(b[16:]), order.Uint32(b[20:])),
+		count:       order.Uint32(b[24:]),
+	}, nil
+}
+
 func (s *submsgHeartbeat) WriteTo(w io.Writer) {
 	s.hdr.WriteTo(w)
 
