@@ -135,4 +135,6 @@ func (g *GUID) Unknown() bool {
 	return g.eid == EIDUnknown && (g.prefix == nil || bytes.Equal(g.prefix, unknownGUIDPrefix))
 }
 
-// unknown Guid is all 0's
+func (g *GUID) String() string {
+	return fmt.Sprintf("[%s : 0x%x]", g.prefix.String(), g.eid)
+}
