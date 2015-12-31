@@ -150,12 +150,11 @@ func (r *receiver) rxInfoSrc(sm *subMsg) {
 
 // handler for SUBMSG_ID_INFO_DST submessages
 func (r *receiver) rxInfoDst(sm *subMsg) {
-
-	var dst submsgInfoDest
-	dst.guidPrefix = sm.data
-	r.dstGUIDPrefix = sm.data
-
-	fmt.Printf("INFO_DST: %s\n", dst.guidPrefix.String())
+	// only element in submsgInfoDest is the prefix
+	if len(sm.data) == UDPGuidPrefixLen {
+		r.dstGUIDPrefix = sm.data
+	}
+	fmt.Printf("INFO_DST (14): %s\n", r.dstGUIDPrefix.String())
 }
 
 // handler for SUBMSG_ID_DATA submessages
