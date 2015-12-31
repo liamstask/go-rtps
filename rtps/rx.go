@@ -83,7 +83,6 @@ func (r *receiver) handleSubMsg(sm *subMsg) {
 		fmt.Println("SUBMSG_ID_GAP")
 
 	case SUBMSG_ID_INFO_TS:
-		fmt.Println("SUBMSG_ID_INFO_TS")
 		r.rxInfoTS(sm)
 
 	case SUBMSG_ID_INFO_SRC:
@@ -93,7 +92,6 @@ func (r *receiver) handleSubMsg(sm *subMsg) {
 		fmt.Println("SUBMSG_ID_INFO_REPLY_IP4")
 
 	case SUBMSG_ID_INFO_DST:
-		fmt.Println("SUBMSG_ID_INFO_DST")
 		r.rxInfoDst(sm)
 
 	case SUBMSG_ID_INFO_REPLY:
@@ -127,7 +125,7 @@ func (r *receiver) rxInfoTS(sm *subMsg) {
 		var err error
 		if r.timestamp, err = timeFromBytes(sm.bin, sm.data); err == nil {
 			r.haveTimestamp = true
-			fmt.Printf("INFO_TS: %v now: %v\n", r.timestamp, time.Now().UTC())
+			// fmt.Printf("INFO_TS: %v now: %v\n", r.timestamp, time.Now().UTC())
 		}
 	}
 }
@@ -178,7 +176,7 @@ func (r *receiver) rxData(sm *subMsg) {
 		data:              sm.data[20:],
 	}
 
-	fmt.Printf("  data: xflags 0x%x, octets to qos %d, 0x%x 0x%x, inlineQoS? %v\n", smd.extraflags, smd.octetsToInlineQos, smd.readerID, smd.writerID, inlineQoS)
+	// fmt.Printf("  data: xflags 0x%x, octets to qos %d, 0x%x 0x%x, inlineQoS? %v\n", smd.extraflags, smd.octetsToInlineQos, smd.readerID, smd.writerID, inlineQoS)
 
 	b := smd.data
 
@@ -209,11 +207,6 @@ func (r *receiver) rxData(sm *subMsg) {
 		eid:    smd.writerID,
 	}
 
-	// special-case SEDP, since some SEDP broadcasts (e.g., from opensplice
-	// sometimes (?)) seem to come with reader_id set to 0
-	//frudp_entity_id_t reader_id = data_submsg.reader_id;
-	//if (data_submsg.writer_id.u == 0xc2030000)
-	//  reader_id.u = 0xc7030000;
 	// spin through subscriptions and see if anyone is listening
 	matches := 0
 	for _, rdr := range defaultSession.readers {
@@ -233,10 +226,10 @@ func (r *receiver) rxData(sm *subMsg) {
 	}
 
 	if matches == 0 {
-		println("    couldn't find a matched reader for this DATA: ", writerGUID.prefix.String())
+		fmt.Printf("    couldn't find a matched reader for this DATA: %s (0x%x)\n", writerGUID.prefix.String(), writerGUID.eid)
 		println("    available readers:")
 		for _, rdr := range defaultSession.readers {
-			println("      writer = ", rdr.writerGUID.prefix.String(), " => ", rdr.readerEID)
+			fmt.Printf("      writer = %s => 0x%x\n", rdr.writerGUID.prefix.String(), rdr.readerEID)
 		}
 	}
 }
@@ -277,13 +270,11 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 	}
 	writerGUID := GUID{eid: hb.writerEID, prefix: r.srcGUIDPrefix}
 
-	fmt.Printf("  HEARTBEAT %s  ", writerGUID.prefix.String())
+	fmt.Printf("  HEARTBEAT %s", writerGUID.prefix.String())
 	fmt.Printf(" => 0x%08x  %d.%d\n", hb.readerEID, hb.firstSeqNum, hb.lastSeqNum)
 
 	var match *Reader
 	// spin through subscriptions and see if we've already matched a reader
-
-	println("checking amongst readers:", len(defaultSession.readers))
 
 	for _, rdr := range defaultSession.readers {
 		if writerGUID.Equal(&rdr.writerGUID) &&
@@ -314,18 +305,17 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 	}
 
 	if match != nil {
-		//g_frudp_subs[i].heartbeat_cb(rcvr, hb);
 		if match.reliable && !final {
 			println("acknack requested in heartbeat")
 			// we have to send an ACKNACK now
-			var set SeqNumSet32bits
+			var set SeqNumSet
 			// todo: handle 64-bit sequence numbers
 			// set.bitmapBase.high = 0
 			if match.maxRxSeqNum >= hb.lastSeqNum { // we're up-to-date
 				println("hb up to date")
 				set.bitmapBase = hb.firstSeqNum + 1
 				set.numBits = 0
-				set.bitmap = 0xffffffff
+				set.bitmap = []uint32{}
 			} else {
 				println("hb acknack'ing multiple samples")
 				set.bitmapBase = match.maxRxSeqNum + 1
@@ -333,16 +323,14 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 				if set.numBits > 31 {
 					set.numBits = 31
 				}
-				set.bitmap = 0xffffffff
+				set.bitmap = []uint32{0xffffffff}
 			}
-			// frudp_tx_acknack(&rcvr.src_guid_prefix, &match.reader_eid, &match.writer_guid, set /* (frudp_sn_set_t *) */)
+			udpTxAckNack(r.srcGUIDPrefix, match.readerEID, match.writerGUID, set)
 		} else {
-			// FINAL flag not yet, don't tx acknak
+			println("FINAL flag not set in heartbeat; not going to tx acknack")
 		}
 	} else {
-		// fmt.Printf("      couldn't find match for inbound heartbeat:\n");
-		// fmt.Printf("         ");
-		// frudp_print_guid(&writer_guid);
-		// fmt.Printf(" => %08x\n", (unsigned)freertps_htonl(hb.reader_id.u));
+		fmt.Printf("      couldn't find match for inbound heartbeat:\n")
+		fmt.Printf("         %s => 0x%08x", writerGUID.prefix.String(), hb.readerEID)
 	}
 }

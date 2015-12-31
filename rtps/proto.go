@@ -165,10 +165,18 @@ type SeqNumSet struct {
 	bitmap     []uint32 // as many uint32s required by numBits
 }
 
-type SeqNumSet32bits struct {
-	bitmapBase SeqNum
-	numBits    uint32
-	bitmap     uint32
+func (sns *SeqNumSet) Valid() bool {
+	if sns.bitmapBase <= 0 {
+		return false
+	}
+	if sns.numBits <= 0 || sns.numBits > 256 {
+		return false
+	}
+	return true
+}
+
+func (sns *SeqNumSet) BitMapWords() int {
+	return int((sns.numBits + 31) / 32)
 }
 
 type submsgHeader struct {
