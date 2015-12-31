@@ -325,8 +325,8 @@ var (
 
 func udpTxAckNack(prefix GUIDPrefix, readerID EntityID, writerGUID GUID, set SeqNumSet) {
 	// find the participant we are trying to talk to
-	part := defaultSession.findParticipant(prefix)
-	if part == nil {
+	part, found := defaultSession.findParticipant(prefix)
+	if !found {
 		println("tried to acknack an unknown participant:", prefix.String())
 		return // better error handling
 	}

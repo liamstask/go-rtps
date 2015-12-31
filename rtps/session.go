@@ -9,7 +9,7 @@ import (
 type session struct {
 	readers           []*Reader
 	writers           []*Writer
-	discoParticipants []*Participant
+	discoParticipants []*Participant // xxx: store as map keyed by guid prefix?
 	pubs              []*Pub
 	subs              []*Sub
 	spdp              SPDP
@@ -88,11 +88,16 @@ func (s *session) pubWithWriterID(id EntityID) *Pub {
 	return nil
 }
 
-func (s *session) findParticipant(gp GUIDPrefix) *Participant {
+func (s *session) findParticipant(gp GUIDPrefix) (*Participant, bool) {
 	for _, p := range s.discoParticipants {
 		if bytes.Equal(gp, p.guidPrefix) {
-			return p
+			return p, true
 		}
 	}
-	return nil
+	return nil, false
+}
+
+func (s *session) addParticipant(p *Participant) {
+	// XXX: ensure this part is not already in our list?
+	s.discoParticipants = append(s.discoParticipants, p)
 }

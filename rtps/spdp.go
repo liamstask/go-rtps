@@ -115,19 +115,11 @@ func (s *SPDP) rxData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 
 	// now that we have stuff the "part" buffer, spin through our
 	// participant list and see if we already have this one
-	found := false
-	for i, p := range defaultSession.discoParticipants {
-		if bytes.Equal(p.guidPrefix, part.guidPrefix) {
-			found = true
-			println("found match at participant slot", i, p.guidPrefix.String())
-			// TODO: see if anything has changed. update if needed
-			break
-		}
-	}
-
-	if !found {
+	if _, found := defaultSession.findParticipant(part.guidPrefix); found {
+		// TODO: see if anything has changed. update if needed
+	} else {
 		fmt.Printf("new participant in slot %d: %s\n", len(defaultSession.discoParticipants), part.guidPrefix.String())
-		defaultSession.discoParticipants = append(defaultSession.discoParticipants, part)
+		defaultSession.addParticipant(part)
 		defaultSession.sedp.addBuiltinEndpoints(part)
 	}
 }
