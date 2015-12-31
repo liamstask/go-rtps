@@ -2,6 +2,7 @@ package rtps
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 )
 
@@ -41,6 +42,10 @@ const (
 	NN_ENTITYID_KIND_READER_NO_KEY                     = 0x04
 	NN_ENTITYID_KIND_READER_WITH_KEY                   = 0x07
 	NN_ENTITYID_ALLOCSTEP                              = 0x100
+)
+
+var (
+	unknownGUIDPrefix = GUIDPrefix{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 )
 
 func vendorName(id VendorID) string {
@@ -115,8 +120,19 @@ type GUID struct {
 	eid    EntityID
 }
 
+func guidFromBytes(b []byte) GUID {
+	return GUID{
+		prefix: b[:UDPGuidPrefixLen],
+		eid:    EntityID(binary.LittleEndian.Uint32(b[UDPGuidPrefixLen:])),
+	}
+}
+
 func (g *GUID) Equal(other *GUID) bool {
 	return g.eid == other.eid && bytes.Equal(g.prefix, other.prefix)
+}
+
+func (g *GUID) Unknown() bool {
+	return g.eid == EIDUnknown && (g.prefix == nil || bytes.Equal(g.prefix, unknownGUIDPrefix))
 }
 
 // unknown Guid is all 0's
