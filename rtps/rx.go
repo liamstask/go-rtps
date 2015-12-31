@@ -268,63 +268,50 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 	}
 	writerGUID := GUID{eid: hb.writerEID, prefix: r.srcGUIDPrefix}
 
-	fmt.Printf("  HEARTBEAT %s", writerGUID.prefix.String())
-	fmt.Printf(" => 0x%08x  %d.%d\n", hb.readerEID, hb.firstSeqNum, hb.lastSeqNum)
+	// fmt.Printf("  HEARTBEAT %s => 0x%08x  %d.%d\n", writerGUID.prefix.String(), hb.readerEID, hb.firstSeqNum, hb.lastSeqNum)
 
-	var match *Reader
-	// spin through subscriptions and see if we've already matched a reader
-
-	for _, rdr := range defaultSession.readers {
-		if writerGUID.Equal(&rdr.writerGUID) &&
-			(hb.readerEID == rdr.readerEID || hb.readerEID == 0) {
-			match = rdr
-			break
+	match, found := defaultSession.readerWithWriterGUIDAndRdrID(&writerGUID, hb.readerEID)
+	if !found {
+		// no reader yet, but if we have a subscription ready for it, initialize a reader
+		if sub, found := defaultSession.subWithRdrID(hb.readerEID); found {
+			match := &Reader{
+				reliable:    sub.reliable,
+				readerEID:   hb.readerEID,
+				maxRxSeqNum: 0,
+				dataCB:      sub.dataCB,
+				msgCB:       sub.msgCB,
+				writerGUID:  writerGUID,
+			}
+			println("adding reader due to heartbeat RX")
+			defaultSession.addReader(match)
 		}
 	}
 
-	// else, if we have a subscription for this, initialize a reader
+	// still not found? bail
 	if match == nil {
-		for _, sub := range defaultSession.subs {
-			if sub.readerEID == hb.readerEID {
-				r := &Reader{
-					reliable:    sub.reliable,
-					readerEID:   hb.readerEID,
-					maxRxSeqNum: 0,
-					dataCB:      sub.dataCB,
-					msgCB:       sub.msgCB,
-					writerGUID:  GUID{eid: writerGUID.eid, prefix: writerGUID.prefix},
-				}
-				match = r
-				println("adding reader due to heartbeat RX")
-				defaultSession.addReader(r)
-				break
-			}
-		}
-	}
-
-	if match != nil {
-		if match.reliable && !final {
-			// we have to send an ACKNACK now
-			var set SeqNumSet
-			if match.maxRxSeqNum >= hb.lastSeqNum {
-				println("hb: acknack requested, up to date")
-				set.bitmapBase = hb.firstSeqNum + 1
-				set.numBits = 0
-			} else {
-				println("hb: acknack requested, acknack'ing multiple samples")
-				set.bitmapBase = match.maxRxSeqNum + 1
-				set.numBits = uint32(hb.lastSeqNum - match.maxRxSeqNum - 1)
-				if set.numBits > 31 {
-					set.numBits = 31
-				}
-				set.bitmap = []uint32{0xffffffff} // all bits acked for now
-			}
-			udpTxAckNack(r.srcGUIDPrefix, match.readerEID, match.writerGUID, set)
-		} else {
-			println("FINAL flag not set in heartbeat; not going to tx acknack")
-		}
-	} else {
 		fmt.Printf("      couldn't find match for inbound heartbeat:\n")
 		fmt.Printf("         %s => 0x%08x", writerGUID.prefix.String(), hb.readerEID)
+		return
+	}
+
+	if match.reliable && !final {
+		// we have to send an ACKNACK now
+		var set SeqNumSet
+		if match.maxRxSeqNum >= hb.lastSeqNum {
+			// println("hb: acknack requested, up to date")
+			set.bitmapBase = hb.firstSeqNum + 1
+			set.numBits = 0
+		} else {
+			// println("hb: acknack requested, acknack'ing multiple samples")
+			set.bitmapBase = match.maxRxSeqNum + 1
+			set.numBits = uint32(hb.lastSeqNum - match.maxRxSeqNum - 1)
+			if set.numBits > 31 {
+				set.numBits = 31
+			}
+			set.bitmap = []uint32{0xffffffff} // all bits acked for now
+		}
+		udpTxAckNack(r.srcGUIDPrefix, match.readerEID, match.writerGUID, set)
+	} else {
+		// println("FINAL flag not set in heartbeat; not going to tx acknack")
 	}
 }
