@@ -325,6 +325,23 @@ type submsgAckNack struct {
 	count         uint32
 }
 
+func (s *submsgAckNack) WriteTo(w io.Writer) {
+	s.hdr.WriteTo(w)
+
+	sz := 24 + s.readerSNState.BitMapWords()*4
+	b := make([]byte, sz)
+	binary.LittleEndian.PutUint32(b[0:], uint32(s.readerEID))
+	binary.LittleEndian.PutUint32(b[4:], uint32(s.writerEID))
+
+	binary.LittleEndian.PutUint64(b[8:], uint64(s.readerSNState.bitmapBase))
+	binary.LittleEndian.PutUint32(b[16:], uint32(s.readerSNState.numBits))
+	for i, n := range s.readerSNState.bitmap {
+		binary.LittleEndian.PutUint32(b[20+i*4:], n)
+	}
+	binary.LittleEndian.PutUint32(b[sz-4:], s.count)
+	w.Write(b)
+}
+
 type submsgInfoDest struct {
 	guidPrefix GUIDPrefix
 }
