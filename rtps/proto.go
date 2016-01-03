@@ -407,7 +407,8 @@ func (p *paramListItem) valToString(bin binary.ByteOrder) (string, error) {
 	if len(p.value) < 4+sz {
 		return "", io.EOF
 	}
-	return string(p.value[4 : 4+sz]), nil
+	// encoded with null terminator, strip that out
+	return string(p.value[4 : 4+sz-1]), nil
 }
 
 func packParamString(bin binary.ByteOrder, s string) []byte {
