@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 )
 
 const (
@@ -256,69 +255,6 @@ func udpTX(data []byte, dest *net.UDPAddr) error {
 }
 
 var (
-	// where does this belong?
-	hb_count = uint32(0)
-)
-
-func udpPublish(pub *Pub, submsg *submsgData) {
-	// TODO: for best-effort connections, don't buffer it like this
-	// check to see if the publisher has a buffer or not, first....
-
-	// (todo: allow people to stuff the message directly in the pub and
-	// call this function with sample set to NULL to indicate this)
-
-	// find first place we can buffer this sample
-	pub.maxTxSeqNumAvail += 1
-	// frudp_submsg_data_t *pub_submsg = pub.data_submsgs[pub.next_submsg_idx];
-	pubSubmsg := pub.dataSubmsgs[pub.nextSubmsgIdx]
-
-	// *pubSubmsg = *submsg
-	if submsg.writerSeqNum == SeqNumUnknown {
-		pubSubmsg.writerSeqNum = pub.nextSeqNum
-		pub.nextSeqNum++
-	}
-	copy(pubSubmsg.data, submsg.data)
-
-	var msgbuf bytes.Buffer
-	hdr := newHeader()
-	hdr.WriteTo(&msgbuf)
-
-	tsSubmsg := newTsSubMsg(time.Now(), binary.LittleEndian)
-	tsSubmsg.WriteTo(&msgbuf)
-
-	///////////////////////////////////////////////////////////////////////
-	//frudp_submsg_data_t *data_submsg = (frudp_submsg_data_t *)&msg.submsgs[submsg_wpos];
-	// memcpy(&msg.submsgs[submsg_wpos], submsg, 4 + submsg.header.len);
-	//data_submsg, submsg, 4 + submsg.header.len);
-	// submsg_wpos += 4 + submsg.header.len;
-
-	hb := submsgHeartbeat{
-		hdr: submsgHeader{
-			id:    SUBMSG_ID_HEARTBEAT,
-			flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
-			sz:    28,
-		},
-		readerEID:   submsg.readerID,
-		writerEID:   submsg.writerID,
-		firstSeqNum: 1, // todo, should increase each time (?)
-		lastSeqNum:  1, //submsg.writer_sn;
-		count:       hb_count,
-	}
-	hb_count += 1
-	hb.WriteTo(&msgbuf)
-
-	addrstr := fmt.Sprintf("%s:%d", DEFAULT_MCAST_GROUP_IP.String(), defaultUDPConfig.mcastBuiltinPort())
-	udpaddr, err := net.ResolveUDPAddr("udp", addrstr)
-	println("publish to:", addrstr)
-	if err == nil {
-		if err = udpTX(msgbuf.Bytes(), udpaddr); err != nil {
-			println("couldn't transmit SPDP broadcast message:", err)
-		}
-	}
-	pub.nextSubmsgIdx += 1 // else
-}
-
-var (
 	// better place for this to live
 	s_acknack_count = uint32(1)
 )
@@ -332,8 +268,7 @@ func udpTxAckNack(prefix GUIDPrefix, readerID EntityID, writerGUID GUID, set Seq
 	}
 
 	var msgbuf bytes.Buffer
-	hdr := newHeader()
-	hdr.WriteTo(&msgbuf)
+	newHeader().WriteTo(&msgbuf)
 
 	dstSubmsg := subMsg{
 		hdr: submsgHeader{

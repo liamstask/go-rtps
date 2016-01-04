@@ -28,16 +28,16 @@ type SEDP struct {
 
 func (s *SEDP) init() {
 	// no topic, type name
-	s.subPub = newPub("", "", SEDPSubWriterID, s.subWriterDataSubmsgs)
+	s.subPub = newPub("", "", ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER, s.subWriterDataSubmsgs)
 
 	// no topic, type name
-	s.pubPub = newPub("", "", SEDPPubWriterID, s.pubWriterDataSubmsgs)
+	s.pubPub = newPub("", "", ENTITYID_SEDP_BUILTIN_PUBLICATIONS_WRITER, s.pubWriterDataSubmsgs)
 
 	// subscribe to the subscriber announcers
 	defaultSession.addSub(&Sub{
 		topicName: "",
 		typeName:  "",
-		readerEID: SEDPSubReaderID,
+		readerEID: ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER,
 		dataCB:    s.rxSubData,
 		reliable:  true,
 	})
@@ -46,7 +46,7 @@ func (s *SEDP) init() {
 	defaultSession.addSub(&Sub{
 		topicName: "",
 		typeName:  "",
-		readerEID: SEDPPubReaderID,
+		readerEID: ENTITYID_SEDP_BUILTIN_PUBLICATIONS_READER,
 		dataCB:    s.rxPubData,
 		reliable:  true,
 	})
@@ -83,12 +83,12 @@ func (s *SEDP) bcast() {
 	// todo
 }
 
-// called with publication info, as the dataCB for SEDPPubReaderID subscription
+// called with publication info, as the dataCB for ENTITYID_SEDP_BUILTIN_PUBLICATIONS_READER subscription
 func (s *SEDP) rxPubData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 	s.rxPubSubData(r, submsg, scheme, b, true)
 }
 
-// called with subscription info, as the dataCB for SEDPSubReaderID subscription
+// called with subscription info, as the dataCB for ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER subscription
 func (s *SEDP) rxSubData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 	s.rxPubSubData(r, submsg, scheme, b, false)
 }
@@ -96,8 +96,8 @@ func (s *SEDP) rxSubData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 func (s *SEDP) addBuiltinEndpoints(part *Participant) {
 	// reads the remote peer's publications
 	defaultSession.addReader(&Reader{
-		writerGUID:  GUID{eid: SEDPPubWriterID, prefix: part.guidPrefix},
-		readerEID:   SEDPPubReaderID,
+		writerGUID:  GUID{eid: ENTITYID_SEDP_BUILTIN_PUBLICATIONS_WRITER, prefix: part.guidPrefix},
+		readerEID:   ENTITYID_SEDP_BUILTIN_PUBLICATIONS_READER,
 		maxRxSeqNum: 0,
 		dataCB:      s.rxPubData,
 		reliable:    true,
@@ -105,8 +105,8 @@ func (s *SEDP) addBuiltinEndpoints(part *Participant) {
 
 	// reads the remote peer's subscriptions
 	defaultSession.addReader(&Reader{
-		writerGUID:  GUID{eid: SEDPSubWriterID, prefix: part.guidPrefix},
-		readerEID:   SEDPSubReaderID,
+		writerGUID:  GUID{eid: ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER, prefix: part.guidPrefix},
+		readerEID:   ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER,
 		maxRxSeqNum: 0,
 		dataCB:      s.rxSubData,
 		reliable:    true,
@@ -124,7 +124,12 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 
 	// first, send the publications
 
-	if s.pubPub.nextSubmsgIdx != 0 {
+	s.sendPubMsgsToParticipant(s.pubPub, part)
+	// s.sendPubMsgsToParticipant(s.subPub, part)
+}
+
+func (s *SEDP) sendPubMsgsToParticipant(pub *Pub, part *Participant) {
+	if len(pub.dataSubmsgs) != 0 {
 		var msgbuf bytes.Buffer
 		hdr := newHeader()
 		hdr.WriteTo(&msgbuf)
@@ -132,11 +137,10 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 		tsSubmsg := newTsSubMsg(time.Now(), binary.LittleEndian)
 		tsSubmsg.WriteTo(&msgbuf)
 
-		for i := uint32(0); i < s.pubPub.nextSubmsgIdx; i++ {
-			// todo: make sure we don't overflow a single ethernet frame
-			pubSubmsg := s.pubPub.dataSubmsgs[i]
-			pubSubmsg.WriteTo(&msgbuf)
-			fmt.Printf("catchup SEDP msg %d addressed to reader EID 0x%08x\r\n", i, pubSubmsg.readerID)
+		for i, smdata := range pub.dataSubmsgs {
+			// xxx: make sure we don't overflow a single ethernet frame
+			smdata.WriteTo(&msgbuf)
+			fmt.Printf("catchup SEDP msg %d addressed to reader EID 0x%08x\r\n", i, smdata.readerID)
 		}
 		hb := submsgHeartbeat{
 			hdr: submsgHeader{
@@ -144,10 +148,10 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 				flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
 				sz:    28,
 			},
-			readerEID:   s.pubPub.dataSubmsgs[0].readerID,
-			writerEID:   s.pubPub.dataSubmsgs[0].writerID,
+			readerEID:   pub.dataSubmsgs[0].readerID,
+			writerEID:   pub.dataSubmsgs[0].writerID,
 			firstSeqNum: 1, // todo
-			lastSeqNum:  newSeqNum(0, s.pubPub.nextSubmsgIdx),
+			lastSeqNum:  newSeqNum(0, uint32(len(pub.dataSubmsgs))),
 			count:       0,
 		}
 		hb.WriteTo(&msgbuf)
@@ -155,13 +159,16 @@ func (s *SEDP) sendSedpMsgs(part *Participant) {
 		addr := part.metaUcastLoc.addrStr()
 		fmt.Printf("sending %d bytes of SEDP catchup messages to %s\n", msgbuf.Len(), addr)
 		if err := udpTXStr(msgbuf.Bytes(), addr); err != nil {
-			println("couldn't transmit SPDP broadcast message:", err)
+			println("couldn't transmit SEDP catchup messages:", err.Error())
 		}
 	} else {
 		println("no SEDP pub data to send to new participant")
 	}
 }
 
+// receive info about a remote publication endpoint.
+// if it's a topic a reader has registered a subscription for,
+// create a new reader for it.
 func (s *SEDP) rxPubInfo(info *sedpTopicInfo) {
 	fmt.Printf("sedp pub: [%s / %s] num_subs = %d\r\n",
 		info.topicName, info.typeName, len(defaultSession.subs))
@@ -173,7 +180,7 @@ func (s *SEDP) rxPubInfo(info *sedpTopicInfo) {
 		if sub.topicName == info.topicName && sub.typeName == info.typeName {
 			fmt.Printf("    hooray! found a topic we care about: [%s]\n", sub.topicName)
 			// see if we already have a matched reader for this writer
-			if rdr := defaultSession.readerWithWriterGUID(&info.guid); rdr == nil {
+			if _, found := defaultSession.readerWithWriterGUID(&info.guid); !found {
 				defaultSession.addReader(&Reader{
 					writerGUID:  info.guid,
 					readerEID:   sub.readerEID,
@@ -187,6 +194,9 @@ func (s *SEDP) rxPubInfo(info *sedpTopicInfo) {
 	}
 }
 
+// receive info about a remote subscription endpoint.
+// if it's a topic we've registered a publication for,
+// create a new writer for it.
 func (s *SEDP) rxSubInfo(info *sedpTopicInfo) {
 	fmt.Printf("sedp sub: [%s]\r\n", info.topicName)
 	// look to see if we publish this topic
@@ -203,7 +213,7 @@ func (s *SEDP) rxSubInfo(info *sedpTopicInfo) {
 		}
 		fmt.Printf("    hooray! heard a request for a topic we publish: [%s]\r\n", pub.topicName)
 		// see if we already have a writer for this subscriber
-		if w := defaultSession.writerWithReaderGUID(&info.guid); w == nil {
+		if _, found := defaultSession.writerWithReaderGUID(&info.guid); !found {
 			defaultSession.addWriter(&Writer{
 				readerGUID: info.guid,
 				writerEID:  pub.writerEID,
@@ -291,7 +301,7 @@ func (s *SEDP) publishSub(sub *Sub) {
 		println("woah there partner. you need to call frudp_part_create()")
 		return
 	}
-	println("sedp_publish_sub:", sub.topicName)
+	println("sedp publishSub:", sub.topicName)
 	s.publish(sub.topicName, sub.typeName, s.subPub, sub.readerEID)
 }
 
@@ -300,28 +310,26 @@ func (s *SEDP) publishPub(pub *Pub) {
 		println("woah there partner. you need to call frudp_part_create()")
 		return
 	}
-	println("sedp_publish_pub:", pub.topicName)
+	println("sedp publishPub:", pub.topicName)
 	s.publish(pub.topicName, pub.typeName, s.pubPub, pub.writerEID)
 }
 
 func (s *SEDP) publish(topicName, typeName string, pub *Pub, eid EntityID) {
 	// first make sure we have an spdp packet out first
-	// printf("sedp publish [%s] via SEDP EID 0x%08x\r\n", topic_name, (unsigned)freertps_htonl(pub.writer_eid.u));
-	// frudp_submsg_data_t *d = (frudp_submsg_data_t *)g_sedp_msg_buf;
 
 	// data submessage
 	dataSubmsg := submsgData{
 		hdr: submsgHeader{
 			id:    SUBMSG_ID_DATA,
-			flags: FRUDP_FLAGS_LITTLE_ENDIAN | FRUDP_FLAGS_DATA_PRESENT,
+			flags: FLAGS_SM_ENDIAN | FRUDP_FLAGS_DATA_PRESENT,
+			sz:    20, // added to later
 		},
 		extraflags:        0,
 		octetsToInlineQos: 16,
-		readerID:          SEDPSubReaderID,
-		writerID:          SEDPSubWriterID,
-		writerSeqNum:      0,
+		readerID:          ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER,
+		writerID:          ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER,
+		writerSeqNum:      pub.nextSeqNum,
 	}
-	dataSubmsg.hdr.sz = 20
 
 	var submsgBuf bytes.Buffer
 
@@ -333,7 +341,6 @@ func (s *SEDP) publish(topicName, typeName string, pub *Pub, eid EntityID) {
 	scheme.WriteTo(&submsgBuf)
 
 	/////////////////////////////////////////////////////////////
-
 	paramList := paramListItem{
 		pid:   PID_PROTOCOL_VERSION,
 		value: []byte{2, 1, 0, 0},
@@ -348,16 +355,12 @@ func (s *SEDP) publish(topicName, typeName string, pub *Pub, eid EntityID) {
 	paramListNext.WriteTo(&submsgBuf)
 
 	/////////////////////////////////////////////////////////////
+	guid := GUID{defaultUDPConfig.guidPrefix, eid}
 	epGUID := paramListItem{
 		pid:   PID_ENDPOINT_GUID,
-		value: defaultUDPConfig.guidPrefix[:],
+		value: guid.Bytes(),
 	}
 	epGUID.WriteTo(&submsgBuf)
-	// frudp_guid_t guid;
-	// guid.prefix = g_frudp_config.guid_prefix;
-	// guid.eid = eid;
-	// memcpy(param.value, &guid, 16);
-	//printf("reader_guid = 0x%08x\n", htonl(reader_guid.entity_id.u));
 
 	/////////////////////////////////////////////////////////////
 	if topicName != "" {
@@ -377,13 +380,12 @@ func (s *SEDP) publish(topicName, typeName string, pub *Pub, eid EntityID) {
 	}
 	/////////////////////////////////////////////////////////////
 	// todo: follow the "reliable" flag in the subscription structure
-	// reliability := qosReliability{
-	//     kind:            QOS_RELIABILITY_KIND_BEST_EFFORT,
-	//     maxBlockingTime: duration{sec: 0, nanosec: 0x19999999},
-	// }
+	var rbuf bytes.Buffer // ugh
+	reliability := qosReliability{QOS_RELIABILITY_KIND_BEST_EFFORT, time.Second * 5}
+	reliability.WriteTo(&rbuf)
 	qosParam := paramListItem{
-		pid: PID_RELIABILITY,
-		// xxx: value:,
+		pid:   PID_RELIABILITY,
+		value: rbuf.Bytes(),
 	}
 	qosParam.WriteTo(&submsgBuf)
 
@@ -394,6 +396,7 @@ func (s *SEDP) publish(topicName, typeName string, pub *Pub, eid EntityID) {
 	sentinel := paramListItem{pid: PID_SENTINEL}
 	sentinel.WriteTo(&submsgBuf)
 
-	// d.header.len = param.value - 4 - (uint8_t *)&d.extraflags;
-	udpPublish(pub, &dataSubmsg) // this will be either on the sub or pub publisher
+	dataSubmsg.data = submsgBuf.Bytes()
+	dataSubmsg.hdr.sz += uint16(submsgBuf.Len())
+	pub.publish(&dataSubmsg) // this will be either on the sub or pub publisher
 }

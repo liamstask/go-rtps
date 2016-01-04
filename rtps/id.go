@@ -4,48 +4,43 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"sync/atomic"
 )
 
 const (
 	UDPGuidPrefixLen  = 12
-	EIDUnknown        = 0
-	SPDPWriterID      = 0xc2000100
-	SPDPReaderID      = 0xc7000100
-	SEDPPubWriterID   = 0xc2030000
-	SEDPPubReaderID   = 0xc7030000
-	SEDPSubWriterID   = 0xc2040000
-	SEDPSubReaderID   = 0xc7040000
 	Magic             = 0x52545053 // RTPS in ASCII
 	MY_RTPS_VENDOR_ID = 0x1234
 )
 
 const (
-	NN_ENTITYID_UNKNOWN                                = 0x0
-	NN_ENTITYID_PARTICIPANT                            = 0x1c1
-	NN_ENTITYID_SEDP_BUILTIN_TOPIC_WRITER              = 0x2c2
-	NN_ENTITYID_SEDP_BUILTIN_TOPIC_READER              = 0x2c7
-	NN_ENTITYID_SEDP_BUILTIN_PUBLICATIONS_WRITER       = 0x3c2
-	NN_ENTITYID_SEDP_BUILTIN_PUBLICATIONS_READER       = 0x3c7
-	NN_ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER      = 0x4c2
-	NN_ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER      = 0x4c7
-	NN_ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER        = 0x100c2
-	NN_ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER        = 0x100c7
-	NN_ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_WRITER = 0x200c2
-	NN_ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_READER = 0x200c7
-	NN_ENTITYID_SOURCE_MASK                            = 0xc0
-	NN_ENTITYID_SOURCE_USER                            = 0x00
-	NN_ENTITYID_SOURCE_BUILTIN                         = 0xc0
-	NN_ENTITYID_SOURCE_VENDOR                          = 0x40
-	NN_ENTITYID_KIND_MASK                              = 0x3f
-	NN_ENTITYID_KIND_WRITER_WITH_KEY                   = 0x02
-	NN_ENTITYID_KIND_WRITER_NO_KEY                     = 0x03
-	NN_ENTITYID_KIND_READER_NO_KEY                     = 0x04
-	NN_ENTITYID_KIND_READER_WITH_KEY                   = 0x07
-	NN_ENTITYID_ALLOCSTEP                              = 0x100
+	ENTITYID_UNKNOWN                                = 0x0
+	ENTITYID_PARTICIPANT                            = 0x1c1
+	ENTITYID_SEDP_BUILTIN_TOPIC_WRITER              = 0x2c2
+	ENTITYID_SEDP_BUILTIN_TOPIC_READER              = 0x2c7
+	ENTITYID_SEDP_BUILTIN_PUBLICATIONS_WRITER       = 0x3c2
+	ENTITYID_SEDP_BUILTIN_PUBLICATIONS_READER       = 0x3c7
+	ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER      = 0x4c2
+	ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER      = 0x4c7
+	ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER        = 0x100c2
+	ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER        = 0x100c7
+	ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_WRITER = 0x200c2
+	ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_READER = 0x200c7
+	ENTITYID_SOURCE_MASK                            = 0xc0
+	ENTITYID_SOURCE_USER                            = 0x00
+	ENTITYID_SOURCE_BUILTIN                         = 0xc0
+	ENTITYID_SOURCE_VENDOR                          = 0x40
+	ENTITYID_KIND_MASK                              = 0x3f
+	ENTITYID_KIND_WRITER_WITH_KEY                   = 0x02
+	ENTITYID_KIND_WRITER_NO_KEY                     = 0x03
+	ENTITYID_KIND_READER_NO_KEY                     = 0x04
+	ENTITYID_KIND_READER_WITH_KEY                   = 0x07
+	ENTITYID_ALLOCSTEP                              = 0x100
 )
 
 var (
 	unknownGUIDPrefix = GUIDPrefix{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	nextUserEntityID  = int32(0)
 )
 
 func vendorName(id VendorID) string {
@@ -89,7 +84,8 @@ func vendorName(id VendorID) string {
 	}
 }
 
-// EntityID is an entity id
+// EntityID is an entity id.
+// NB: always encoded big endian, regardless of submessage endian flag
 type EntityID uint32
 
 func (eid EntityID) kind() uint8 {
@@ -98,6 +94,38 @@ func (eid EntityID) kind() uint8 {
 
 func (eid EntityID) key() []byte {
 	return []byte{byte(eid>>8) & 0xff, byte(eid>>16) & 0xff, byte(eid>>24) & 0xff}
+}
+
+func createUserID(entityKind uint8) EntityID {
+	// For user IDs, "the entityKey field within the EntityId_t
+	// can be chosen arbitrarily by the middleware implementation
+	// as long as the resulting EntityId_t is unique within the Participant.", sec 9.3.1.2
+	eid := EntityID(atomic.AddInt32(&nextUserEntityID, ENTITYID_ALLOCSTEP) | int32(entityKind))
+	return eid
+}
+
+func (eid EntityID) isWriter() bool {
+	switch eid & ENTITYID_KIND_MASK {
+	case ENTITYID_KIND_WRITER_WITH_KEY, ENTITYID_KIND_WRITER_NO_KEY:
+		return true
+	}
+	return false
+}
+
+func (eid EntityID) isReader() bool {
+	switch eid & ENTITYID_KIND_MASK {
+	case ENTITYID_KIND_READER_WITH_KEY, ENTITYID_KIND_READER_NO_KEY:
+		return true
+	}
+	return false
+}
+
+func (eid EntityID) isBuiltin() bool {
+	return (eid & ENTITYID_SOURCE_MASK) == ENTITYID_SOURCE_BUILTIN
+}
+
+func (eid EntityID) isBuiltinEndpoint() bool {
+	return eid.isBuiltin() && eid != ENTITYID_PARTICIPANT
 }
 
 type VendorID uint16
@@ -123,8 +151,15 @@ type GUID struct {
 func guidFromBytes(b []byte) GUID {
 	return GUID{
 		prefix: b[:UDPGuidPrefixLen],
-		eid:    EntityID(binary.LittleEndian.Uint32(b[UDPGuidPrefixLen:])),
+		eid:    EntityID(binary.BigEndian.Uint32(b[UDPGuidPrefixLen:])),
 	}
+}
+
+func (g *GUID) Bytes() []byte {
+	b := make([]byte, 16)
+	copy(b, g.prefix)
+	binary.BigEndian.PutUint32(b[UDPGuidPrefixLen:], uint32(g.eid))
+	return b
 }
 
 func (g *GUID) Equal(other *GUID) bool {
@@ -132,7 +167,7 @@ func (g *GUID) Equal(other *GUID) bool {
 }
 
 func (g *GUID) Unknown() bool {
-	return g.eid == EIDUnknown && (g.prefix == nil || bytes.Equal(g.prefix, unknownGUIDPrefix))
+	return g.eid == ENTITYID_UNKNOWN && (g.prefix == nil || bytes.Equal(g.prefix, unknownGUIDPrefix))
 }
 
 func (g *GUID) String() string {

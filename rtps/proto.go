@@ -10,7 +10,7 @@ import (
 // XXX: too much copying, use zero copy buffers
 
 var (
-	SeqNumUnknown = newSeqNum(^uint32(0), 0)
+	SeqNumUnknown = newSeqNum(-1, 0)
 )
 
 const (
@@ -57,12 +57,11 @@ const (
 )
 
 const (
-	PID_PAD                        = 0x0000
-	PID_SENTINEL                   = 0x0001
-	PID_PARTICIPANT_LEASE_DURATION = 0x0002
-	PID_TOPIC_NAME                 = 0x0005
-	PID_TYPE_NAME                  = 0x0007
-	// PID_RELIABILITY                   = 0x001a
+	PID_PAD                           = 0x0000
+	PID_SENTINEL                      = 0x0001
+	PID_PARTICIPANT_LEASE_DURATION    = 0x0002
+	PID_TOPIC_NAME                    = 0x0005
+	PID_TYPE_NAME                     = 0x0007
 	PID_PROTOCOL_VERSION              = 0x0015
 	PID_VENDOR_ID                     = 0x0016
 	PID_RELIABILITY                   = 0x001a
@@ -84,18 +83,18 @@ const (
 )
 
 const (
-	FRUDP_BUILTIN_EP_PARTICIPANT_ANNOUNCER           = 0x00000001
-	FRUDP_BUILTIN_EP_PARTICIPANT_DETECTOR            = 0x00000002
-	FRUDP_BUILTIN_EP_PUBLICATION_ANNOUNCER           = 0x00000004
-	FRUDP_BUILTIN_EP_PUBLICATION_DETECTOR            = 0x00000008
-	FRUDP_BUILTIN_EP_SUBSCRIPTION_ANNOUNCER          = 0x00000010
-	FRUDP_BUILTIN_EP_SUBSCRIPTION_DETECTOR           = 0x00000020
-	FRUDP_BUILTIN_EP_PARTICIPANT_PROXY_ANNOUNCER     = 0x00000040
-	FRUDP_BUILTIN_EP_PARTICIPANT_PROXY_DETECTOR      = 0x00000080
-	FRUDP_BUILTIN_EP_PARTICIPANT_STATE_ANNOUNCER     = 0x00000100
-	FRUDP_BUILTIN_EP_PARTICIPANT_STATE_DETECTOR      = 0x00000200
-	FRUDP_BUILTIN_EP_PARTICIPANT_MESSAGE_DATA_WRITER = 0x00000400
-	FRUDP_BUILTIN_EP_PARTICIPANT_MESSAGE_DATA_READER = 0x00000800
+	BUILTIN_EP_PARTICIPANT_ANNOUNCER           = 0x00000001
+	BUILTIN_EP_PARTICIPANT_DETECTOR            = 0x00000002
+	BUILTIN_EP_PUBLICATION_ANNOUNCER           = 0x00000004
+	BUILTIN_EP_PUBLICATION_DETECTOR            = 0x00000008
+	BUILTIN_EP_SUBSCRIPTION_ANNOUNCER          = 0x00000010
+	BUILTIN_EP_SUBSCRIPTION_DETECTOR           = 0x00000020
+	BUILTIN_EP_PARTICIPANT_PROXY_ANNOUNCER     = 0x00000040
+	BUILTIN_EP_PARTICIPANT_PROXY_DETECTOR      = 0x00000080
+	BUILTIN_EP_PARTICIPANT_STATE_ANNOUNCER     = 0x00000100
+	BUILTIN_EP_PARTICIPANT_STATE_DETECTOR      = 0x00000200
+	BUILTIN_EP_PARTICIPANT_MESSAGE_DATA_WRITER = 0x00000400
+	BUILTIN_EP_PARTICIPANT_MESSAGE_DATA_READER = 0x00000800
 )
 
 const (
@@ -104,8 +103,8 @@ const (
 
 type SeqNum int64
 
-func newSeqNum(hi uint32, lo uint32) SeqNum {
-	return SeqNum(hi<<32 + lo)
+func newSeqNum(hi int32, lo uint32) SeqNum {
+	return SeqNum(int64(hi)<<32 + int64(lo))
 }
 
 type ProtoVersion struct {
@@ -163,6 +162,10 @@ type SeqNumSet struct {
 	bitmapBase SeqNum   // first sequence number in the set
 	numBits    uint32   // total bit count
 	bitmap     []uint32 // as many uint32s required by numBits
+}
+
+func (sns *SeqNumSet) Last() SeqNum {
+	return sns.bitmapBase + SeqNum(sns.numBits)
 }
 
 func (sns *SeqNumSet) Valid() bool {
@@ -260,8 +263,8 @@ func (s *submsgData) WriteTo(w io.Writer) {
 	b := make([]byte, 20)
 	binary.LittleEndian.PutUint16(b[0:], s.extraflags)
 	binary.LittleEndian.PutUint16(b[2:], s.octetsToInlineQos)
-	binary.LittleEndian.PutUint32(b[4:], uint32(s.readerID))
-	binary.LittleEndian.PutUint32(b[8:], uint32(s.writerID))
+	binary.BigEndian.PutUint32(b[4:], uint32(s.readerID))
+	binary.BigEndian.PutUint32(b[8:], uint32(s.writerID))
 	binary.LittleEndian.PutUint32(b[12:], uint32(s.writerSeqNum>>32))
 	binary.LittleEndian.PutUint32(b[16:], uint32(s.writerSeqNum&0xffffffff))
 	w.Write(b)
@@ -272,7 +275,7 @@ func (s *submsgData) Matches(r *Reader) bool {
 	// have to special-case the SPDP entity ID's, since they come in
 	// with any GUID prefix and with either an unknown reader entity ID
 	// or the unknown-reader entity ID
-	return s.writerID == SPDPWriterID && (r.readerEID == SPDPReaderID || r.readerEID == EIDUnknown)
+	return s.writerID == ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER && (r.readerEID == ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER || r.readerEID == ENTITYID_UNKNOWN)
 }
 
 type submsgDataFrag struct {
@@ -305,10 +308,10 @@ func newHeartbeatFromBytes(b []byte) (*submsgHeartbeat, error) {
 
 	order := binary.LittleEndian
 	return &submsgHeartbeat{
-		readerEID:   EntityID(order.Uint32(b[0:])),
-		writerEID:   EntityID(order.Uint32(b[4:])),
-		firstSeqNum: newSeqNum(order.Uint32(b[8:]), order.Uint32(b[12:])),
-		lastSeqNum:  newSeqNum(order.Uint32(b[16:]), order.Uint32(b[20:])),
+		readerEID:   EntityID(binary.BigEndian.Uint32(b[0:])),
+		writerEID:   EntityID(binary.BigEndian.Uint32(b[4:])),
+		firstSeqNum: newSeqNum(int32(order.Uint32(b[8:])), order.Uint32(b[12:])),
+		lastSeqNum:  newSeqNum(int32(order.Uint32(b[16:])), order.Uint32(b[20:])),
 		count:       order.Uint32(b[24:]),
 	}, nil
 }
@@ -317,8 +320,8 @@ func (s *submsgHeartbeat) WriteTo(w io.Writer) {
 	s.hdr.WriteTo(w)
 
 	b := make([]byte, 28)
-	binary.LittleEndian.PutUint32(b[0:], uint32(s.readerEID))
-	binary.LittleEndian.PutUint32(b[4:], uint32(s.writerEID))
+	binary.BigEndian.PutUint32(b[0:], uint32(s.readerEID))
+	binary.BigEndian.PutUint32(b[4:], uint32(s.writerEID))
 	binary.LittleEndian.PutUint32(b[8:], uint32(s.firstSeqNum>>32))
 	binary.LittleEndian.PutUint32(b[12:], uint32(s.firstSeqNum&0xffffffff))
 	binary.LittleEndian.PutUint32(b[16:], uint32(s.lastSeqNum>>32))
@@ -348,8 +351,8 @@ func (s *submsgAckNack) WriteTo(w io.Writer) {
 
 	sz := 24 + s.readerSNState.BitMapWords()*4
 	b := make([]byte, sz)
-	binary.LittleEndian.PutUint32(b[0:], uint32(s.readerEID))
-	binary.LittleEndian.PutUint32(b[4:], uint32(s.writerEID))
+	binary.BigEndian.PutUint32(b[0:], uint32(s.readerEID))
+	binary.BigEndian.PutUint32(b[4:], uint32(s.writerEID))
 
 	binary.LittleEndian.PutUint32(b[8:], uint32(s.readerSNState.bitmapBase>>32))
 	binary.LittleEndian.PutUint32(b[12:], uint32(s.readerSNState.bitmapBase&0xffffffff))

@@ -134,7 +134,6 @@ func (r *receiver) rxInfoTS(sm *subMsg) {
 
 // handler for SUBMSG_ID_INFO_SRC submessages
 func (r *receiver) rxInfoSrc(sm *subMsg) {
-
 	is := submsgInfoSrc{
 		// unused     uint32
 		version:    ProtoVersion{sm.data[4], sm.data[5]},
@@ -145,7 +144,6 @@ func (r *receiver) rxInfoSrc(sm *subMsg) {
 	r.srcGUIDPrefix = is.guidPrefix
 	r.srcProtoVer = is.version
 	r.srcVID = is.vid
-	fmt.Printf("INFOSRC: %s vendor 0x%x\n", r.srcGUIDPrefix.String(), r.srcVID)
 }
 
 // handler for SUBMSG_ID_INFO_DST submessages
@@ -154,7 +152,6 @@ func (r *receiver) rxInfoDst(sm *subMsg) {
 	if len(sm.data) == UDPGuidPrefixLen {
 		r.dstGUIDPrefix = sm.data
 	}
-	fmt.Printf("INFO_DST (14): %s\n", r.dstGUIDPrefix.String())
 }
 
 // handler for SUBMSG_ID_DATA submessages
@@ -171,13 +168,11 @@ func (r *receiver) rxData(sm *subMsg) {
 	smd := submsgData{
 		extraflags:        sm.bin.Uint16(sm.data[0:]),
 		octetsToInlineQos: sm.bin.Uint16(sm.data[2:]),
-		readerID:          EntityID(sm.bin.Uint32(sm.data[4:])),
-		writerID:          EntityID(sm.bin.Uint32(sm.data[8:])),
-		writerSeqNum:      newSeqNum(sm.bin.Uint32(sm.data[12:]), sm.bin.Uint32(sm.data[16:])),
+		readerID:          EntityID(binary.BigEndian.Uint32(sm.data[4:])),
+		writerID:          EntityID(binary.BigEndian.Uint32(sm.data[8:])),
+		writerSeqNum:      newSeqNum(int32(sm.bin.Uint32(sm.data[12:])), sm.bin.Uint32(sm.data[16:])),
 		data:              sm.data[20:],
 	}
-
-	// fmt.Printf("  data: xflags 0x%x, octets to qos %d, 0x%x 0x%x, inlineQoS? %v\n", smd.extraflags, smd.octetsToInlineQos, smd.readerID, smd.writerID, inlineQoS)
 
 	b := smd.data
 
@@ -238,10 +233,10 @@ func (r *receiver) rxData(sm *subMsg) {
 // handler for SUBMSG_ID_ACKNACK submessages
 func (r *receiver) rxAckNack(sm *subMsg) {
 	an := submsgAckNack{
-		readerEID: EntityID(sm.bin.Uint32(sm.data[0:])),
-		writerEID: EntityID(sm.bin.Uint32(sm.data[4:])),
+		readerEID: EntityID(binary.BigEndian.Uint32(sm.data[0:])),
+		writerEID: EntityID(binary.BigEndian.Uint32(sm.data[4:])),
 		readerSNState: SeqNumSet{
-			bitmapBase: newSeqNum(sm.bin.Uint32(sm.data[8:]), sm.bin.Uint32(sm.data[12:])),
+			bitmapBase: newSeqNum(int32(sm.bin.Uint32(sm.data[8:])), sm.bin.Uint32(sm.data[12:])),
 			numBits:    sm.bin.Uint32(sm.data[16:]),
 		},
 	}

@@ -45,18 +45,18 @@ func (s *session) addReader(r *Reader) {
 	s.readers = append(s.readers, r)
 }
 
-func (s *session) readerWithWriterGUID(g *GUID) *Reader {
+func (s *session) readerWithWriterGUID(g *GUID) (*Reader, bool) {
 	for _, rdr := range defaultSession.readers {
 		if rdr.writerGUID.Equal(g) {
-			return rdr
+			return rdr, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func (s *session) readerWithWriterGUIDAndRdrID(g *GUID, rdrID EntityID) (*Reader, bool) {
 	for _, rdr := range defaultSession.readers {
-		if rdr.writerGUID.Equal(g) && (rdrID == rdr.readerEID || rdrID == EIDUnknown) {
+		if rdr.writerGUID.Equal(g) && (rdrID == rdr.readerEID || rdrID == ENTITYID_UNKNOWN) {
 			return rdr, true
 		}
 	}
@@ -73,13 +73,13 @@ func (s *session) addWriter(w *Writer) {
 	s.writers = append(s.writers, w)
 }
 
-func (s *session) writerWithReaderGUID(g *GUID) *Writer {
+func (s *session) writerWithReaderGUID(g *GUID) (*Writer, bool) {
 	for _, wrtr := range defaultSession.writers {
 		if wrtr.readerGUID.Equal(g) {
-			return wrtr
+			return wrtr, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func (s *session) addSub(sub *Sub) {

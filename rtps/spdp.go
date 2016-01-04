@@ -20,13 +20,13 @@ type SPDP struct {
 func (s *SPDP) init() {
 	reader := &Reader{
 		// writerGUID: , // all zeros == unknown
-		readerEID: SPDPReaderID,
+		readerEID: ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER,
 		dataCB:    s.rxData,
 	}
 	defaultSession.addReader(reader)
 }
 
-// called when data has been received for SPDPReaderID
+// called when data has been received for ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER
 func (s *SPDP) rxData(r *receiver, submsg *subMsg, scheme uint16, b []byte) {
 	if scheme != SCHEME_PL_CDR_LE {
 		println("expected spdp data to be PL_CDR_LE. bailing...")
@@ -148,14 +148,14 @@ func (s *SPDP) bcast() {
 		hdr: submsgHeader{
 			id:    SUBMSG_ID_DATA,
 			flags: FRUDP_FLAGS_LITTLE_ENDIAN | FRUDP_FLAGS_INLINE_QOS | FRUDP_FLAGS_DATA_PRESENT,
+			sz:    20, // added to later
 		},
 		extraflags:        0,
 		octetsToInlineQos: 16,
-		readerID:          EIDUnknown,
-		writerID:          SPDPWriterID,
+		readerID:          ENTITYID_UNKNOWN,
+		writerID:          ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER,
 		writerSeqNum:      1,
 	}
-	dataSubmsg.hdr.sz = 20 // added to later
 
 	var submsgBuf bytes.Buffer
 
@@ -165,7 +165,7 @@ func (s *SPDP) bcast() {
 		value: make([]byte, 16),
 	}
 	copy(inlineQosParam.value, defaultUDPConfig.guidPrefix)
-	binary.BigEndian.PutUint32(inlineQosParam.value[12:], NN_ENTITYID_PARTICIPANT)
+	binary.BigEndian.PutUint32(inlineQosParam.value[12:], ENTITYID_PARTICIPANT)
 	inlineQosParam.WriteTo(&submsgBuf)
 
 	sentinel := paramListItem{pid: PID_SENTINEL}
@@ -237,7 +237,7 @@ func (s *SPDP) bcast() {
 		value: make([]byte, 4+UDPGuidPrefixLen),
 	}
 	copy(partguidParam.value, defaultUDPConfig.guidPrefix)
-	binary.BigEndian.PutUint32(partguidParam.value[UDPGuidPrefixLen:], NN_ENTITYID_PARTICIPANT)
+	binary.BigEndian.PutUint32(partguidParam.value[UDPGuidPrefixLen:], ENTITYID_PARTICIPANT)
 	partguidParam.WriteTo(&submsgBuf)
 
 	/////////////////////////////////////////////////////////////
@@ -258,6 +258,6 @@ func (s *SPDP) bcast() {
 
 	// xxx: cache address somewhere
 	if err := udpTXAddr(msgbuf.Bytes(), DEFAULT_MCAST_GROUP_IP.String(), defaultUDPConfig.mcastBuiltinPort()); err != nil {
-		println("couldn't transmit SPDP broadcast message:", err)
+		println("couldn't transmit SPDP broadcast message:", err.Error())
 	}
 }
