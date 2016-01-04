@@ -391,7 +391,7 @@ func (s *SEDP) publish(topicName, typeName string, pub *Pub, eid EntityID) {
 	// XXX: PRESENTATION
 
 	/////////////////////////////////////////////////////////////
-	sentinel := paramListItem{pid: PID_RELIABILITY}
+	sentinel := paramListItem{pid: PID_SENTINEL}
 	sentinel.WriteTo(&submsgBuf)
 
 	// d.header.len = param.value - 4 - (uint8_t *)&d.extraflags;
