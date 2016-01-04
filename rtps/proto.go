@@ -271,13 +271,6 @@ func (s *submsgData) WriteTo(w io.Writer) {
 	w.Write(s.data)
 }
 
-func (s *submsgData) Matches(r *Reader) bool {
-	// have to special-case the SPDP entity ID's, since they come in
-	// with any GUID prefix and with either an unknown reader entity ID
-	// or the unknown-reader entity ID
-	return s.writerID == ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER && (r.readerEID == ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER || r.readerEID == ENTITYID_UNKNOWN)
-}
-
 type submsgDataFrag struct {
 	hdr                  submsgHeader
 	extraflags           uint16

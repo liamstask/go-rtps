@@ -1,7 +1,6 @@
 package rtps
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -252,49 +251,4 @@ func udpTX(data []byte, dest *net.UDPAddr) error {
 		return err
 	}
 	return fmt.Errorf("no live sockets")
-}
-
-var (
-	// better place for this to live
-	s_acknack_count = uint32(1)
-)
-
-func udpTxAckNack(prefix GUIDPrefix, readerID EntityID, writerGUID GUID, set SeqNumSet) {
-	// find the participant we are trying to talk to
-	part, found := defaultSession.findParticipant(prefix)
-	if !found {
-		println("tried to acknack an unknown participant:", prefix.String())
-		return // better error handling
-	}
-
-	var msgbuf bytes.Buffer
-	newHeader().WriteTo(&msgbuf)
-
-	dstSubmsg := subMsg{
-		hdr: submsgHeader{
-			id:    SUBMSG_ID_INFO_DST,
-			flags: FLAGS_SM_ENDIAN | FLAGS_ACKNACK_FINAL,
-			sz:    UDPGuidPrefixLen,
-		},
-		data: prefix,
-	}
-	dstSubmsg.WriteTo(&msgbuf)
-
-	an := submsgAckNack{
-		hdr: submsgHeader{
-			id:    SUBMSG_ID_ACKNACK,
-			flags: FLAGS_SM_ENDIAN,
-			sz:    uint16(24 + set.BitMapWords()*4),
-		},
-		readerEID:     readerID,
-		writerEID:     writerGUID.eid,
-		readerSNState: set,
-		count:         s_acknack_count,
-	}
-	an.WriteTo(&msgbuf)
-	s_acknack_count++
-
-	if err := udpTXStr(msgbuf.Bytes(), part.metaUcastLoc.addrStr()); err != nil {
-		println("udpTxAckNack failed to tx:", err.Error())
-	}
 }
