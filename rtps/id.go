@@ -100,8 +100,7 @@ func createUserID(entityKind uint8) EntityID {
 	// For user IDs, "the entityKey field within the EntityId_t
 	// can be chosen arbitrarily by the middleware implementation
 	// as long as the resulting EntityId_t is unique within the Participant.", sec 9.3.1.2
-	eid := EntityID(atomic.AddInt32(&nextUserEntityID, ENTITYID_ALLOCSTEP) | int32(entityKind))
-	return eid
+	return EntityID(atomic.AddInt32(&nextUserEntityID, ENTITYID_ALLOCSTEP) | int32(entityKind))
 }
 
 func (eid EntityID) isWriter() bool {
