@@ -100,11 +100,11 @@ var (
 func (pub *Pub) rxAckNack(an *submsgAckNack, gp GUIDPrefix) {
 	// see if we have any of the requested messages
 	for reqSeqNum := an.readerSNState.bitmapBase; reqSeqNum < an.readerSNState.Last()+1; reqSeqNum++ {
-		println("     request for seq num:", reqSeqNum, "avail:", len(pub.dataSubmsgs))
+		// println("     request for seq num:", reqSeqNum, "avail:", len(pub.dataSubmsgs))
 		for _, smdata := range pub.dataSubmsgs {
-			fmt.Printf("       %d ?= %d\n", reqSeqNum, smdata.writerSeqNum)
+			// fmt.Printf("       %d ?= %d\n", reqSeqNum, smdata.writerSeqNum)
 			if smdata.writerSeqNum == reqSeqNum {
-				println("        found it in the history cache! now i need to tx to", gp.String())
+				// println("        found it in the history cache! now i need to tx to", gp.String())
 
 				// look up the GUID prefix of this reader, so we can call them back
 				part, found := defaultSession.findParticipant(gp)

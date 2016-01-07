@@ -241,7 +241,7 @@ func (r *receiver) rxAckNack(sm *subMsg) {
 		},
 	}
 
-	fmt.Printf("ACKNACK: %d . %d\n", an.readerSNState.bitmapBase, an.readerSNState.numBits)
+	// fmt.Printf("ACKNACK: %d . %d\n", an.readerSNState.bitmapBase, an.readerSNState.numBits)
 
 	if pub := defaultSession.pubWithWriterID(an.writerEID); pub != nil {
 		pub.rxAckNack(&an, r.srcGUIDPrefix)
@@ -294,8 +294,6 @@ func (r *receiver) rxHeartbeat(sm *subMsg) {
 		set := match.generateAckNackForHB(hb)
 		match.txAckNack(r.srcGUIDPrefix, set)
 	} else {
-		if traceHeartbeat {
-			println("  FINAL flag not set in heartbeat; not going to tx acknack")
-		}
+		// println("  FINAL flag not set in heartbeat; not going to tx acknack")
 	}
 }
