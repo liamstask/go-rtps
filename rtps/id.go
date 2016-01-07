@@ -39,7 +39,7 @@ const (
 )
 
 var (
-	unknownGUIDPrefix = GUIDPrefix{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	unknownGUIDPrefix = GUIDPrefix{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	nextUserEntityID  = int32(0)
 )
 
