@@ -56,7 +56,7 @@ func newQosHistoryFromBytes(bin binary.ByteOrder, b []byte) (qosHistory, error) 
 }
 
 type qosPresentation struct {
-	scope           uint32
-	coherent_access uint16
-	ordered_access  uint16
+	scope          uint32
+	coherentAccess uint16
+	orderedAccess  uint16
 }
